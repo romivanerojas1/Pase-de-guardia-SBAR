@@ -17,7 +17,7 @@ Eres un asistente experto en Enfermería Pediátrica. Tu función es transformar
 [REGLAS DE SEGURIDAD Y FORMATO]
 1. NUNCA inventes, asumas o deduzcas datos clínicos que no estén explícitamente presentes en el texto de entrada.
 2. Estandariza la terminología informal o coloquial a lenguaje técnico de enfermería.
-3. Si un dato requerido no figura en el texto, indica strictly: "No registrado".
+3. Si un dato requerido no figura en el texto, indica estrictamente: "No registrado".
 4. REGLA DE ORO PARA PENDIENTES: Compara la lista de órdenes/indicaciones médicas con los resultados o reportes disponibles. Si una práctica o estudio solicitado no cuenta con reporte cargado, DEBES colocarlo en la sección [R] encabezado con el símbolo "⚠️ PENDIENTE:".
 
 [ESTRUCTURA DE SALIDA REQUERIDA]
@@ -55,7 +55,6 @@ for i, tab in enumerate(tabs):
     with tab:
         st.subheader(f"🛏️ Registro y Pase SBAR - {nombre_cama}")
         
-        # Estructura de dos columnas dentro de la pestaña: Izquierda entrada, Derecha salida SBAR
         col_input, col_output = st.columns([1, 1])
         
         with col_input:
@@ -77,22 +76,28 @@ for i, tab in enumerate(tabs):
                 else:
                     try:
                         genai.configure(api_key=api_key)
-                        # Usamos la referencia nativa del modelo
-                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        
+                        # Intento con los identificadores estables de Gemini
+                        modelos_a_probar = ['gemini-1.5-flash-latest', 'gemini-1.5-pro-latest', 'gemini-1.5-flash']
+                        respuesta_exitosa = False
                         
                         with st.spinner("Procesando registro clínico y alertas..."):
-                            response = model.generate_content(f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}")
-                            st.session_state[f'sbar_res_{nombre_cama}'] = response.text
-                            st.success("¡Pase SBAR generado!")
-                    except Exception as e:
-                        # Fallback automático a gemini-1.5-pro en caso de inconsistencia de la API
-                        try:
-                            model_fallback = genai.GenerativeModel('gemini-1.5-pro')
-                            response = model_fallback.generate_content(f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}")
-                            st.session_state[f'sbar_res_{nombre_cama}'] = response.text
-                            st.success("¡Pase SBAR generado!")
-                        except Exception as err_fallback:
-                            st.error(f"Error al conectar con el servicio de IA: {err_fallback}")
+                            for nombre_modelo in modelos_a_probar:
+                                try:
+                                    model = genai.GenerativeModel(nombre_modelo)
+                                    response = model.generate_content(f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}")
+                                    st.session_state[f'sbar_res_{nombre_cama}'] = response.text
+                                    st.success(f"¡Pase SBAR generado correctamente!")
+                                    respuesta_exitosa = True
+                                    break
+                                except Exception:
+                                    continue
+                            
+                            if not respuesta_exitosa:
+                                st.error("No se pudo conectar con ningún modelo activo de Gemini. Verifica que tu API Key sea válida.")
+                                
+                    except Exception as err:
+                        st.error(f"Error en la configuración de la clave API: {err}")
 
         with col_output:
             st.markdown("**2. Borrador SBAR Generado (Editable):**")

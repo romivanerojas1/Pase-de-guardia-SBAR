@@ -1,19 +1,15 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Configuración de página ancha
+# Configuración de la página en modo ancho
 st.set_page_config(page_title="Dashboard SBAR - Pediatría", layout="wide")
 
-st.title("🏥 Panel de Control SBAR - Servicio de Pediatría (12 Camas)")
-st.caption("Selecciona una cama para procesar el pase de guardia o revisar las alertas del turno.")
+st.title("🏥 Panel SBAR por Camas - Servicio de Pediatría")
+st.caption("Haz clic en la solapa de cada cama para pegar la evolución del turno y generar el Pase SBAR.")
 
-# Sidebar para API Key
+# Sidebar para la clave API
 st.sidebar.header("⚙️ Configuración")
 api_key = st.sidebar.text_input("Ingresa tu API Key de Gemini:", type="password")
-
-# Inicializar estado de selección de cama
-if 'cama_activa' not in st.session_state:
-    st.session_state['cama_activa'] = None
 
 SYSTEM_PROMPT = """
 Eres un asistente experto en Enfermería Pediátrica. Tu función es transformar registros clínicos heterogéneos, notas del turno e indicaciones médicas en un borrador de Pase de Guardia estandarizado bajo el formato SBAR (Situación, Antecedentes, Evaluación, Recomendación). 
@@ -21,7 +17,7 @@ Eres un asistente experto en Enfermería Pediátrica. Tu función es transformar
 [REGLAS DE SEGURIDAD Y FORMATO]
 1. NUNCA inventes, asumas o deduzcas datos clínicos que no estén explícitamente presentes en el texto de entrada.
 2. Estandariza la terminología informal o coloquial a lenguaje técnico de enfermería.
-3. Si un dato requerido no figura en el texto, indica estrictamente: "No registrado".
+3. Si un dato requerido no figura en el texto, indica strictly: "No registrado".
 4. REGLA DE ORO PARA PENDIENTES: Compara la lista de órdenes/indicaciones médicas con los resultados o reportes disponibles. Si una práctica o estudio solicitado no cuenta con reporte cargado, DEBES colocarlo en la sección [R] encabezado con el símbolo "⚠️ PENDIENTE:".
 
 [ESTRUCTURA DE SALIDA REQUERIDA]
@@ -46,63 +42,69 @@ Eres un asistente experto en Enfermería Pediátrica. Tu función es transformar
 - Pautas de cuidado / Vigilancia para el turno entrante: [Alertas clínicas a vigilar]
 """
 
-# Dibujar la grilla de 12 camas (3 filas x 4 columnas)
-st.subheader("📌 Cuadrícula de Camas de la Sala")
+# Definir la lista de las 12 camas
+camas = [f"Cama {i:02d}" for i in range(1, 13)]
 
-cols_per_row = 4
-for row in range(3):
-    cols = st.columns(cols_per_row)
-    for col_idx in range(cols_per_row):
-        cama_num = row * cols_per_row + col_idx + 1
-        nombre_cama = f"Cama {cama_num:02d}"
-        
-        with cols[col_idx]:
-            # Estilo de tarjeta para cada cama
-            with st.container(border=True):
-                st.markdown(f"### 🛏️ {nombre_cama}")
-                st.caption("Estado: Sin procesar" if st.session_state.get(f'sbar_{nombre_cama}') is None else "🟢 SBAR Listo")
-                
-                # Botón de interacción para cada cama
-                if st.button(f"Seleccionar {nombre_cama}", key=f"btn_{nombre_cama}"):
-                    st.session_state['cama_activa'] = nombre_cama
+# Crear solapas / pestañas superiores para cada cama
+tabs = st.tabs(camas)
 
-# Mostrar el espacio de trabajo de la cama seleccionada abajo
-if st.session_state['cama_activa']:
-    cama_actual = st.session_state['cama_activa']
-    st.divider()
-    st.subheader(f"📝 Edición y Generación SBAR - {cama_actual}")
+# Generar el contenido individual dentro de cada solapa
+for i, tab in enumerate(tabs):
+    nombre_cama = camas[i]
     
-    texto_turno = st.text_area(
-        f"Notas del turno para {cama_actual}:",
-        height=180,
-        placeholder="Pega aquí la evolución, signos vitales e indicaciones médicas..."
-    )
-    
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        generar = st.button("✨ Generar Pase SBAR", type="primary")
+    with tab:
+        st.subheader(f"🛏️ Registro y Pase SBAR - {nombre_cama}")
         
-    if generar:
-        if not api_key:
-            st.error("Por favor, ingresa tu API Key en la barra lateral.")
-        elif not texto_turno:
-            st.warning("Ingresa el texto del turno antes de procesar.")
-        else:
-            try:
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-2.5-flash')
-                
-                with st.spinner("Analizando registros y buscando pendientes..."):
-                    response = model.generate_content(f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}")
-                    st.session_state[f'sbar_{cama_actual}'] = response.text
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error al conectar con la API: {e}")
+        # Estructura de dos columnas dentro de la pestaña: Izquierda entrada, Derecha salida SBAR
+        col_input, col_output = st.columns([1, 1])
+        
+        with col_input:
+            st.markdown("**1. Pega o escribe el registro del turno aquí:**")
+            texto_turno = st.text_area(
+                label=f"Evolución {nombre_cama}",
+                height=250,
+                placeholder=f"Pega aquí la evolución, constantes e indicaciones para {nombre_cama}...",
+                key=f"input_{nombre_cama}"
+            )
+            
+            btn_generar = st.button(f"✨ Generar SBAR {nombre_cama}", key=f"btn_{nombre_cama}", type="primary")
+            
+            if btn_generar:
+                if not api_key:
+                    st.error("Por favor, ingresa tu API Key en el menú lateral izquierdo.")
+                elif not texto_turno.strip():
+                    st.warning("Ingresa el texto del turno antes de procesar.")
+                else:
+                    try:
+                        genai.configure(api_key=api_key)
+                        # Usamos la referencia nativa del modelo
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        
+                        with st.spinner("Procesando registro clínico y alertas..."):
+                            response = model.generate_content(f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}")
+                            st.session_state[f'sbar_res_{nombre_cama}'] = response.text
+                            st.success("¡Pase SBAR generado!")
+                    except Exception as e:
+                        # Fallback automático a gemini-1.5-pro en caso de inconsistencia de la API
+                        try:
+                            model_fallback = genai.GenerativeModel('gemini-1.5-pro')
+                            response = model_fallback.generate_content(f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}")
+                            st.session_state[f'sbar_res_{nombre_cama}'] = response.text
+                            st.success("¡Pase SBAR generado!")
+                        except Exception as err_fallback:
+                            st.error(f"Error al conectar con el servicio de IA: {err_fallback}")
 
-    # Mostrar resultado si ya existe
-    if st.session_state.get(f'sbar_{cama_actual}'):
-        st.markdown(f"#### 📋 Informe SBAR Generado para {cama_actual}")
-        st.text_area("Resultado editable para validación de enfermería:", 
-                     value=st.session_state[f'sbar_{cama_actual}'], 
-                     height=350)
-        st.info("💡 Puedes copiar este texto y pegarlo en el registro de la Historia Clínica.")
+        with col_output:
+            st.markdown("**2. Borrador SBAR Generado (Editable):**")
+            resultado_guardado = st.session_state.get(f'sbar_res_{nombre_cama}', "")
+            
+            st.text_area(
+                label=f"Resultado SBAR {nombre_cama}",
+                value=resultado_guardado,
+                height=280,
+                placeholder="El informe estructurado SBAR aparecerá aquí después de presionar 'Generar SBAR'.",
+                key=f"output_{nombre_cama}"
+            )
+            
+            if resultado_guardado:
+                st.info("💡 Puedes editar o copiar este texto para pegarlo en el registro de la HCD.")

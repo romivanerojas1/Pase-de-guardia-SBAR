@@ -12,15 +12,38 @@ st.sidebar.header("⚙️ Configuración")
 api_key = st.sidebar.text_input("Ingresa tu API Key de Gemini:", type="password")
 
 # Inicializar estado de selección de cama
-if 'cama_activa' not in st.state_values if hasattr(st, 'state_values') else 'cama_activa' not in st.session_state:
+if 'cama_activa' not in st.session_state:
     st.session_state['cama_activa'] = None
 
 SYSTEM_PROMPT = """
-Eres un asistente experto en Enfermería Pediátrica. Tu función es transformar notas del turno e indicaciones médicas en un borrador de Pase de Guardia en formato SBAR (Situación, Antecedentes, Evaluación, Recomendación).
-Reglas:
-1. NO inventes datos.
-2. Estandariza la terminología a lenguaje técnico de enfermería.
-3. REGLA DE ORO: Si detectas una indicación médica o estudio sin reporte cargado, colócalo en la sección [R] encabezado con '⚠️ PENDIENTE:'.
+Eres un asistente experto en Enfermería Pediátrica. Tu función es transformar registros clínicos heterogéneos, notas del turno e indicaciones médicas en un borrador de Pase de Guardia estandarizado bajo el formato SBAR (Situación, Antecedentes, Evaluación, Recomendación). 
+
+[REGLAS DE SEGURIDAD Y FORMATO]
+1. NUNCA inventes, asumas o deduzcas datos clínicos que no estén explícitamente presentes en el texto de entrada.
+2. Estandariza la terminología informal o coloquial a lenguaje técnico de enfermería.
+3. Si un dato requerido no figura en el texto, indica estrictamente: "No registrado".
+4. REGLA DE ORO PARA PENDIENTES: Compara la lista de órdenes/indicaciones médicas con los resultados o reportes disponibles. Si una práctica o estudio solicitado no cuenta con reporte cargado, DEBES colocarlo en la sección [R] encabezado con el símbolo "⚠️ PENDIENTE:".
+
+[ESTRUCTURA DE SALIDA REQUERIDA]
+
+■ [S] SITUACIÓN
+- Paciente: [Nombre, Edad, Cama]
+- Diagnóstico principal: [Diagnóstico y Días de internación]
+- Motivo de ingreso / Situación actual breve: [Resumen en 1 oración]
+
+■ [B] ANTECEDENTES (BACKGROUND)
+- Dispositivos / Vías activas: [Vía periférica, sondas, cánulas, etc.]
+- Alergias: [Alergias conocidas o "Sin alergias conocidas"]
+- Antecedentes relevantes: [Afecciones previas o pautas clave]
+
+■ [A] EVALUACIÓN (ASSESSMENT)
+- Signos vitales del turno: [Tendencia de FC, FR, SatO2, TA y registro de temperatura/fiebre]
+- Examen físico / Resumen del turno: [Evolución de enfermería resumida en lenguaje técnico]
+- Tolerancia alimentaria / Diuresis / Deposiciones: [Estado general]
+
+■ [R] RECOMENDACIONES Y PENDIENTES
+- ⚠️ PENDIENTES DEL TURNO: [Lista de estudios, laboratorios o interconsultas sin reporte]
+- Pautas de cuidado / Vigilancia para el turno entrante: [Alertas clínicas a vigilar]
 """
 
 # Dibujar la grilla de 12 camas (3 filas x 4 columnas)
@@ -67,14 +90,14 @@ if st.session_state['cama_activa']:
         else:
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-2.5-flash')
                 
                 with st.spinner("Analizando registros y buscando pendientes..."):
-                    response = model.generate_content(f"{SYSTEM_PROMPT}\n\nTexto:\n{texto_turno}")
+                    response = model.generate_content(f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}")
                     st.session_state[f'sbar_{cama_actual}'] = response.text
                 st.rerun()
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error al conectar con la API: {e}")
 
     # Mostrar resultado si ya existe
     if st.session_state.get(f'sbar_{cama_actual}'):

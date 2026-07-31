@@ -1,18 +1,20 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Configuración de la página
-st.set_page_config(page_title="Asistente SBAR - Pediatría", layout="wide")
+# Configuración de página ancha
+st.set_page_config(page_title="Dashboard SBAR - Pediatría", layout="wide")
 
-# Título y encabezado
-st.title("🏥 Asistente SBAR - Servicio de Pediatría")
-st.caption("Herramienta de apoyo para la estandarización del pase de guardia y detección de pendientes.")
+st.title("🏥 Panel de Control SBAR - Servicio de Pediatría (12 Camas)")
+st.caption("Selecciona una cama para procesar el pase de guardia o revisar las alertas del turno.")
 
-# Barra lateral para configuración
+# Sidebar para API Key
 st.sidebar.header("⚙️ Configuración")
 api_key = st.sidebar.text_input("Ingresa tu API Key de Gemini:", type="password")
 
-# Prompt del sistema
+# Inicializar estado de selección de cama
+if 'cama_activa' not in st.state_values if hasattr(st, 'state_values') else 'cama_activa' not in st.session_state:
+    st.session_state['cama_activa'] = None
+
 SYSTEM_PROMPT = """
 Eres un asistente experto en Enfermería Pediátrica. Tu función es transformar notas del turno e indicaciones médicas en un borrador de Pase de Guardia en formato SBAR (Situación, Antecedentes, Evaluación, Recomendación).
 Reglas:
@@ -21,37 +23,63 @@ Reglas:
 3. REGLA DE ORO: Si detectas una indicación médica o estudio sin reporte cargado, colócalo en la sección [R] encabezado con '⚠️ PENDIENTE:'.
 """
 
-# Selección de camas (12 camas de Pediatría)
-camas = [f"Cama {i:02d}" for i in range(1, 13)]
-cama_seleccionada = st.selectbox("Selecciona la Cama de Pediatría:", camas)
+# Dibujar la grilla de 12 camas (3 filas x 4 columnas)
+st.subheader("📌 Cuadrícula de Camas de la Sala")
 
-st.subheader(f"📋 Registro del Turno - {cama_seleccionada}")
-
-# Área de texto para ingresar las notas crudas del turno
-texto_turno = st.text_area(
-    "Pega o escribe las notas del turno (evolución, signos vitales, indicaciones):",
-    height=200,
-    placeholder="Ej: Paciente femenina de 12 años... pendiente prueba de tolerancia..."
-)
-
-# Botón para procesar con IA
-if st.button("✨ Generar Pase SBAR"):
-    if not api_key:
-        st.error("Por favor, ingresa una API Key de Gemini en la barra lateral para continuar.")
-    elif not texto_turno:
-        st.warning("Por favor, ingresa el texto del turno para procesar.")
-    else:
-        try:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            
-            with st.spinner("Procesando información clínica y detectando pendientes..."):
-                response = model.generate_content(f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}")
+cols_per_row = 4
+for row in range(3):
+    cols = st.columns(cols_per_row)
+    for col_idx in range(cols_per_row):
+        cama_num = row * cols_per_row + col_idx + 1
+        nombre_cama = f"Cama {cama_num:02d}"
+        
+        with cols[col_idx]:
+            # Estilo de tarjeta para cada cama
+            with st.container(border=True):
+                st.markdown(f"### 🛏️ {nombre_cama}")
+                st.caption("Estado: Sin procesar" if st.session_state.get(f'sbar_{nombre_cama}') is None else "🟢 SBAR Listo")
                 
-            st.success("¡Pase SBAR generado con éxito!")
-            st.markdown("### 📄 Borrador de Pase de Guardia SBAR")
-            st.text_area("Resultado (Editable para validación de enfermería):", value=response.text, height=400)
-            st.warning("⚠️ Recordatorio de Seguridad: Valide el contenido antes de copiarlo a la Historia Clínica.")
-            
-        except Exception as e:
-            st.error(f"Error al procesar: {e}")
+                # Botón de interacción para cada cama
+                if st.button(f"Seleccionar {nombre_cama}", key=f"btn_{nombre_cama}"):
+                    st.session_state['cama_activa'] = nombre_cama
+
+# Mostrar el espacio de trabajo de la cama seleccionada abajo
+if st.session_state['cama_activa']:
+    cama_actual = st.session_state['cama_activa']
+    st.divider()
+    st.subheader(f"📝 Edición y Generación SBAR - {cama_actual}")
+    
+    texto_turno = st.text_area(
+        f"Notas del turno para {cama_actual}:",
+        height=180,
+        placeholder="Pega aquí la evolución, signos vitales e indicaciones médicas..."
+    )
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        generar = st.button("✨ Generar Pase SBAR", type="primary")
+        
+    if generar:
+        if not api_key:
+            st.error("Por favor, ingresa tu API Key en la barra lateral.")
+        elif not texto_turno:
+            st.warning("Ingresa el texto del turno antes de procesar.")
+        else:
+            try:
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                with st.spinner("Analizando registros y buscando pendientes..."):
+                    response = model.generate_content(f"{SYSTEM_PROMPT}\n\nTexto:\n{texto_turno}")
+                    st.session_state[f'sbar_{cama_actual}'] = response.text
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    # Mostrar resultado si ya existe
+    if st.session_state.get(f'sbar_{cama_actual}'):
+        st.markdown(f"#### 📋 Informe SBAR Generado para {cama_actual}")
+        st.text_area("Resultado editable para validación de enfermería:", 
+                     value=st.session_state[f'sbar_{cama_actual}'], 
+                     height=350)
+        st.info("💡 Puedes copiar este texto y pegarlo en el registro de la Historia Clínica.")

@@ -11,6 +11,8 @@ st.caption("Haz clic en la solapa de cada cama para pegar la evolución del turn
 st.sidebar.header("⚙️ Configuración")
 api_key = st.sidebar.text_input("Ingresa tu API Key de Gemini:", type="password")
 
+modo_demo = st.sidebar.checkbox("Modo Demostración (Sin consumo de API)")
+
 SYSTEM_PROMPT = """
 Eres un asistente experto en Enfermería Pediátrica. Tu función es transformar registros clínicos heterogéneos, notas del turno e indicaciones médicas en un borrador de Pase de Guardia estandarizado bajo el formato SBAR (Situación, Antecedentes, Evaluación, Recomendación). 
 
@@ -42,6 +44,26 @@ Eres un asistente experto en Enfermería Pediátrica. Tu función es transformar
 - Pautas de cuidado / Vigilancia para el turno entrante: [Alertas clínicas a vigilar]
 """
 
+SBAR_DEMO_EJEMPLO = """■ [S] SITUACIÓN
+- Paciente: Femenina, 12 años (Cama 01)
+- Diagnóstico principal: Postoperatorio inmediato de HAVA
+- Motivo de ingreso / Situación actual breve: Regresa de quirófano somnolienta bajo efectos anestésicos; en observación.
+
+■ [B] ANTECEDENTES (BACKGROUND)
+- Dispositivos / Vías activas: CVC corto (Abocath 22 double lumen) en MSI con PHP a goteo libre.
+- Alergias: No refiere alergias conocidas.
+- Antecedentes relevantes: TEA leve + retraso madurativo. Rinitis alérgica. ECG y analítica preop en condiciones.
+
+■ [A] EVALUACIÓN (ASSESSMENT)
+- Signos vitales del turno: FC: 95 lpm, SatO2: 95% AA. Afebril, normotensa, eupneica.
+- Examen físico / Resumen del turno: Paciente dormida, tranquila. Baño prequirúrgico con clorhexidina realizado a las 09:30 hs. Pasa a quirófano 10:40 hs, regresa 12:20 hs.
+- Tolerancia alimentaria / Diuresis / Deposiciones: Dieta cero previa. Pendiente prueba de tolerancia oral.
+
+■ [R] RECOMENDACIONES Y PENDIENTES
+- ⚠️ PENDIENTES DEL TURNO:
+  * ⚠️ PENDIENTE: Evaluación de prueba de tolerancia oral a líquidos.
+- Pautas de cuidado / Vigilancia para el turno entrante: Control estricto de sangrado en vía aérea/faringe. Acompañamiento materno permanente por antecedente de TEA."""
+
 # Definir la lista de las 12 camas
 camas = [f"Cama {i:02d}" for i in range(1, 13)]
 
@@ -69,15 +91,16 @@ for i, tab in enumerate(tabs):
             btn_generar = st.button(f"✨ Generar SBAR {nombre_cama}", key=f"btn_{nombre_cama}", type="primary")
             
             if btn_generar:
-                if not api_key:
-                    st.error("Por favor, ingresa tu API Key en el menú lateral izquierdo.")
+                if modo_demo:
+                    st.session_state[f'sbar_res_{nombre_cama}'] = SBAR_DEMO_EJEMPLO
+                    st.success("¡Pase SBAR de muestra cargado (Modo Demo)!")
+                elif not api_key:
+                    st.error("Por favor, ingresa tu API Key en el menú lateral o activa el Modo Demostración.")
                 elif not texto_turno.strip():
                     st.warning("Ingresa el texto del turno antes de procesar.")
                 else:
                     try:
-                        # Cliente oficial de Google GenAI con el modelo activo
                         client = genai.Client(api_key=api_key)
-                        
                         with st.spinner("Procesando registro clínico y alertas..."):
                             response = client.models.generate_content(
                                 model='gemini-2.0-flash',
@@ -87,7 +110,10 @@ for i, tab in enumerate(tabs):
                             st.success("¡Pase SBAR generado!")
                             
                     except Exception as err:
-                        st.error(f"Error al conectar con la API de Gemini: {err}")
+                        if "429" in str(err) or "RESOURCE_EXHAUSTED" in str(err):
+                            st.error("⚠️ Se agotó el límite de solicitudes gratuitas por minuto/día de la API de Google. Espera 1 minuto, crea una API Key nueva o activa el 'Modo Demostración' en el menú lateral.")
+                        else:
+                            st.error(f"Error al conectar con la API de Gemini: {err}")
 
         with col_output:
             st.markdown("**2. Borrador SBAR Generado (Editable):**")

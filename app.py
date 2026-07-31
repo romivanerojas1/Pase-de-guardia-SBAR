@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 
 # Configuración de la página en modo ancho
 st.set_page_config(page_title="Dashboard SBAR - Pediatría", layout="wide")
@@ -75,29 +75,19 @@ for i, tab in enumerate(tabs):
                     st.warning("Ingresa el texto del turno antes de procesar.")
                 else:
                     try:
-                        genai.configure(api_key=api_key)
-                        
-                        # Intento con los identificadores estables de Gemini
-                        modelos_a_probar = ['gemini-1.5-flash-latest', 'gemini-1.5-pro-latest', 'gemini-1.5-flash']
-                        respuesta_exitosa = False
+                        # Cliente oficial de Google GenAI
+                        client = genai.Client(api_key=api_key)
                         
                         with st.spinner("Procesando registro clínico y alertas..."):
-                            for nombre_modelo in modelos_a_probar:
-                                try:
-                                    model = genai.GenerativeModel(nombre_modelo)
-                                    response = model.generate_content(f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}")
-                                    st.session_state[f'sbar_res_{nombre_cama}'] = response.text
-                                    st.success(f"¡Pase SBAR generado correctamente!")
-                                    respuesta_exitosa = True
-                                    break
-                                except Exception:
-                                    continue
+                            response = client.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}"
+                            )
+                            st.session_state[f'sbar_res_{nombre_cama}'] = response.text
+                            st.success("¡Pase SBAR generado!")
                             
-                            if not respuesta_exitosa:
-                                st.error("No se pudo conectar con ningún modelo activo de Gemini. Verifica que tu API Key sea válida.")
-                                
                     except Exception as err:
-                        st.error(f"Error en la configuración de la clave API: {err}")
+                        st.error(f"Error al conectar con la API de Gemini: {err}")
 
         with col_output:
             st.markdown("**2. Borrador SBAR Generado (Editable):**")

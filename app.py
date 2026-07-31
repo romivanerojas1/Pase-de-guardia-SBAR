@@ -75,12 +75,12 @@ for i, tab in enumerate(tabs):
                     st.warning("Ingresa el texto del turno antes de procesar.")
                 else:
                     try:
-                        # Cliente oficial de Google GenAI
+                        # Cliente oficial de Google GenAI con el modelo activo
                         client = genai.Client(api_key=api_key)
                         
                         with st.spinner("Procesando registro clínico y alertas..."):
                             response = client.models.generate_content(
-                                model='gemini-2.5-flash',
+                                model='gemini-2.0-flash',
                                 contents=f"{SYSTEM_PROMPT}\n\nTexto de entrada:\n{texto_turno}"
                             )
                             st.session_state[f'sbar_res_{nombre_cama}'] = response.text
